@@ -12,7 +12,7 @@ on:
       build_id:
         required: true
         type: string
-      # Requires the image name to build (e.g kstatelibrariesit/krex-dspace)
+      # Requires the image name to build (e.g kstatelibraries/krex-dspace)
       image_name:
         required: true
         type: string
