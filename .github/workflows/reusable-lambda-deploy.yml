@@ -1,0 +1,73 @@
+#
+# K-State Libraries reusable Lamba Deployment
+#
+# This is used by lambda-deploy.yml for lambda-deployments
+name: Reusable Lambda Deployments
+
+on:
+    workflow_call:
+        # Possible Inputs to this reusable job
+        inputs:
+            lambda_function_name:
+                required: true
+                type: string
+            lambda_timeout:
+                required: false
+                type: number
+                default: 300
+            lambda_description:
+                required: false
+                type: string
+                default: ''
+            aws_region:
+                required: false
+                type: string
+                default: 'us-east-1'
+            lambda_runtime:
+                required: true
+                type: string
+        secrets:
+            # Requires that AWS Login information
+            AWS_ACCESS_KEY_ID:
+                required: true
+            AWS_SECRET_ACCESS_KEY:
+                required: true
+
+jobs:
+    deploy:
+        name: Deploy Lambda Function
+        runs-on: ubuntu-latest
+        steps:
+        - uses: actions/checkout@v4
+    
+        - name: Make artifact directory
+          run: mkdir -p ./artifacts/${{ github.repository }}/packages
+    
+        - name: Install Python Dependencies 
+          run: pip install -r src/requirements.txt --target ./artifacts/${{ github.repository }}/packages
+          continue-on-error: true
+    
+        - name: Install Zip
+          uses: montudor/action-zip@v1
+    
+        - name: Add Source code to Archive
+          run: zip -qq -r "${{ github.workspace }}/artifacts/${{ github.repository }}/${{ github.sha }}.zip" .
+          working-directory: "${{ github.workspace }}/src"
+    
+        - name: Add Zip Python Packages to Archive
+          run: zip -qq -r "${{ github.workspace }}/artifacts/${{ github.repository }}/${{ github.sha }}.zip" .
+          working-directory: "${{ github.workspace }}/artifacts/${{ github.repository }}/packages"
+          continue-on-error: true
+    
+        - name: AWS Lambda Deploy
+          if: github.ref == 'refs/heads/main'
+          uses: appleboy/lambda-action@v0.2.0
+          with:
+            aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+            aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+            aws_region: ${{ inputs.aws_region }}
+            description: ${{ inputs.lambda_description }}
+            function_name: ${{ inputs.lambda_function_name }}
+            runtime: ${{ inputs.lambda_runtime}}
+            timeout: ${{ inputs.lambda_timeout }}
+            zip_file: ./artifacts/${{ github.repository }}/${{ github.sha }}.zip
