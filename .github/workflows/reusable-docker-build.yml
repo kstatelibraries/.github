@@ -34,6 +34,11 @@ on:
       tags_flavor:
         required: false
         type: string
+      # Architecture Matrix
+      arch_matrix:
+        required: false
+        type: string
+        default: "[ 'linux/amd64', 'linux/arm64' ]"
     secrets:
       # Requires that Docker login info be passed in as secrets.
       DOCKER_USERNAME:
@@ -65,7 +70,7 @@ jobs:
     strategy:
       matrix:
         # Architectures / Platforms for which we will build Docker images
-        arch: [ 'linux/amd64', 'linux/arm64' ]
+        arch: ${{ fromJson(inputs.arch_matrix) }}
         os: [ ubuntu-latest ]
         isPr:
           - ${{ github.event_name == 'pull_request' }}
