@@ -1,0 +1,16 @@
+name: Reuseable Check for No CRLF Line Endings
+
+on:
+  workflow_call:
+
+jobs:
+  validate-clrf-line-endings:
+    name: Ensure No CRLF Line Endings
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository contents
+        uses: actions/checkout@v5.0.0
+
+      - name: Use action to check for CRLF endings
+        uses: erclu/check-crlf@master
