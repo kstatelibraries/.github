@@ -35,7 +35,7 @@ jobs:
         name: Deploy Lambda Function
         runs-on: ubuntu-latest
         steps:
-        - uses: actions/checkout@v5
+        - uses: actions/checkout@v5.0.0
     
         - name: Make artifact directory
           run: mkdir -p ./artifacts/${{ github.repository }}/packages
@@ -45,7 +45,7 @@ jobs:
           continue-on-error: true
     
         - name: Install Zip
-          uses: montudor/action-zip@v1
+          uses: montudor/action-zip@v1.0.0
     
         - name: Add Source code to Archive
           run: zip -qq -r "${{ github.workspace }}/artifacts/${{ github.repository }}/${{ github.sha }}.zip" .
@@ -57,7 +57,7 @@ jobs:
           continue-on-error: true
 
         - name: Configure AWS Credentials
-          uses: aws-actions/configure-aws-credentials@v5
+          uses: aws-actions/configure-aws-credentials@v5.1.0
           with:
             role-to-assume: ${{ secrets[inputs.lambda_role_name] }}
             aws-region: ${{ inputs.aws_region }}
