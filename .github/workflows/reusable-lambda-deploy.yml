@@ -26,12 +26,9 @@ on:
             lambda_runtime:
                 required: true
                 type: string
-        secrets:
-            # Requires that AWS Login information
-            AWS_ACCESS_KEY_ID:
+            lambda_role_name:
                 required: true
-            AWS_SECRET_ACCESS_KEY:
-                required: true
+                type: string
 
 jobs:
     deploy:
@@ -58,13 +55,17 @@ jobs:
           run: zip -qq -r "${{ github.workspace }}/artifacts/${{ github.repository }}/${{ github.sha }}.zip" .
           working-directory: "${{ github.workspace }}/artifacts/${{ github.repository }}/packages"
           continue-on-error: true
-    
+
+        - name: Configure AWS Credentials
+          uses: aws-actions/configure-aws-credentials@v5
+          with:
+            role-to-assume: ${{ secrets[inputs.lambda_role_name] }}
+            aws-region: ${{ inputs.aws_region }}
+
         - name: AWS Lambda Deploy
           if: github.ref == 'refs/heads/main'
           uses: appleboy/lambda-action@v0.2.0
           with:
-            aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-            aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
             aws_region: ${{ inputs.aws_region }}
             description: ${{ inputs.lambda_description }}
             function_name: ${{ inputs.lambda_function_name }}
