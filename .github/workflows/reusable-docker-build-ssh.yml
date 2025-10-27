@@ -157,7 +157,7 @@ jobs:
       # Upload digest to an artifact, so that it can be used in manifest below
       - name: Upload Docker build digest to artifact
         if: ${{ ! matrix.isPr }}
-        uses: actions/upload-artifact@v4.6.2
+        uses: actions/upload-artifact@v5.0.0
         with:
           name: digests-${{ inputs.build_id }}-${{ env.ARCH_NAME }}
           path: /tmp/digests/*
