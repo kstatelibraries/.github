@@ -121,7 +121,7 @@ jobs:
       # Get Metadata for docker_build_deps step below
       - name: Sync metadata (tags, labels) from GitHub to Docker for image
         id: meta_build
-        uses: docker/metadata-action@v5.9.0
+        uses: docker/metadata-action@v5.10.0
         with:
           images: ${{ env.IMAGE_NAME }}
           tags: ${{ env.IMAGE_TAGS }}
@@ -187,7 +187,7 @@ jobs:
 
       - name: Add Docker metadata for image
         id: meta
-        uses: docker/metadata-action@v5.9.0
+        uses: docker/metadata-action@v5.10.0
         with:
           images: ${{ env.IMAGE_NAME }}
           tags: ${{ env.IMAGE_TAGS }}
