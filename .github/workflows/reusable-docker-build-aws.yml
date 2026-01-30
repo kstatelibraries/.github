@@ -1,0 +1,209 @@
+#
+# K-State Libraries reusable Docker build/push workflow.
+#
+# This is used by docker.yml for all Docker image builds
+name: Reusable Docker Build
+
+on:
+  workflow_call:
+    # Possible Inputs to this reusable job
+    inputs:
+      # Build name/id for this Docker build. Used for digest storage to avoid digest overlap between builds.
+      build_id:
+        required: true
+        type: string
+      # Requires the image name to build (e.g kstatelibraries/krex-dspace)
+      image_name:
+        required: true
+        type: string
+      # Optionally the path to the Dockerfile to use for the build. (Default is [dockerfile_context]/Dockerfile)
+      dockerfile_path:
+        required: false
+        type: string
+      # Optionally the context directory to build the Dockerfile within. Defaults to "." (current directory)
+      dockerfile_context:
+        required: false
+        type: string
+        default: '.'
+      # Optionally a list of "additional_contexts" to pass to Dockerfile. Defaults to empty
+      dockerfile_additional_contexts:
+        required: false
+        type: string
+        default: ''
+      # If Docker image should have additional tag flavor details (e.g. a suffix), it may be passed in.
+      tags_flavor:
+        required: false
+        type: string
+      # Architecture Matrix
+      arch_matrix:
+        required: false
+        type: string
+        default: "[ 'linux/amd64', 'linux/arm64' ]"
+    secrets:
+      # Requires that Docker login info be passed in as secrets.
+      DOCKER_USERNAME:
+        required: true
+      DOCKER_ACCESS_TOKEN:
+        required: true
+
+# Define shared default settings as environment variables
+env:
+  IMAGE_NAME: ${{ inputs.image_name }}
+  # Define tags to use for Docker images based on Git tags/branches (for docker/metadata-action)
+  # For a new commit on default branch (main), use the literal tag 'latest' on Docker image.
+  # For a new commit on other branches, use the branch name as the tag for Docker image.
+  # For a new tag, copy that tag name as the tag for Docker image.
+  IMAGE_TAGS: |
+    type=raw,value=latest,enable=${{ github.ref_name == github.event.repository.default_branch }}
+    type=ref,event=branch,enable=${{ github.ref_name != github.event.repository.default_branch }}
+    type=ref,event=tag
+    type=raw,value=pr-${{ github.event.pull_request.number }},enable=${{ github.event_name == 'pull_request' }}
+  # Define default tag "flavor" for docker/metadata-action per
+  # https://github.com/docker/metadata-action#flavor-input
+  # We manage the 'latest' tag ourselves to the 'main' branch (see settings above)
+  TAGS_FLAVOR: |
+    latest=false
+    ${{ inputs.tags_flavor }}
+
+jobs:
+  docker-build:
+    strategy:
+      matrix:
+        include:
+          - arch: linux/amd64
+            os: ubuntu-latest
+            isPr: ${{ github.event_name == 'pull_request' }}
+
+          - arch: linux/arm64
+            os: codebuild-AtoM-runner-${{ github.run_id }}-${{ github.run_attempt }}
+            isPr: ${{ github.event_name == 'pull_request' }}
+        # Architectures / Platforms for which we will build Docker images
+        # arch: ${{ fromJson(inputs.arch_matrix) }}
+        # os: [ ubuntu-latest ]
+
+        # If this is a PR, we ONLY build for AMD64. For PRs we only do a sanity check test to ensure Docker builds work.
+        # The below exclude therefore ensures we do NOT build ARM64 for PRs.
+        # exclude:
+        #   - isPr: true
+        #     os: codebuild-AtoM-runner-${{ github.run_id }}-${{ github.run_attempt }}
+        #     arch: linux/arm64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      # This step converts the slashes in the "arch" matrix values above into dashes & saves to env.ARCH_NAME
+      # E.g. "linux/amd64" becomes "linux-amd64"
+      # This is necessary because all upload artifacts CANNOT have special chars (like slashes)
+      - name: Prepare
+        run: |
+          platform=${{ matrix.arch }}
+          echo "ARCH_NAME=${platform//\//-}" >> $GITHUB_ENV
+
+      # https://github.com/actions/checkout
+      - name: Checkout codebase
+        uses: actions/checkout@v6.0.2
+
+      # https://github.com/docker/setup-buildx-action
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3.12.0
+
+      # https://github.com/docker/setup-qemu-action
+      - name: Set up QEMU emulation to build for multiple architectures
+        uses: docker/setup-qemu-action@v3.7.0
+
+      # https://github.com/docker/login-action
+      - name: Login to DockerHub
+        # Only login if not from a fork
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        uses: docker/login-action@v3.6.0
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_ACCESS_TOKEN }}
+
+      # https://github.com/docker/metadata-action
+      # Get Metadata for docker_build_deps step below
+      - name: Sync metadata (tags, labels) from GitHub to Docker for image
+        id: meta_build
+        uses: docker/metadata-action@v5.10.0
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: ${{ env.IMAGE_TAGS }}
+          flavor: ${{ env.TAGS_FLAVOR }}
+
+      # https://github.com/docker/build-push-action
+      - name: Build and push image
+        id: docker_build
+        uses: docker/build-push-action@v6.18.0
+        with:
+          build-contexts: |
+            ${{ inputs.dockerfile_additional_contexts }}
+          context: ${{ inputs.dockerfile_context }}
+          file: ${{ inputs.dockerfile_path }}
+          platforms: ${{ matrix.arch }}
+          # push if NOT a PR OR if it’s a same-repo PR
+          push: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+          # Use tags / labels provided by 'docker/metadata-action' above
+          tags: ${{ steps.meta_build.outputs.tags }}
+          labels: ${{ steps.meta_build.outputs.labels }}
+
+      # Export the digest of Docker build locally (for non PRs only)
+      - name: Export Docker build digest
+        if: ${{ !matrix.isPr }}
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.docker_build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      # Upload digest to an artifact, so that it can be used in manifest below
+      - name: Upload Docker build digest to artifact
+        if: ${{ !matrix.isPr }}
+        uses: actions/upload-artifact@v6.0.0
+        with:
+          name: digests-${{ inputs.build_id }}-${{ env.ARCH_NAME }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # Merge Docker digests (from various architectures) into a manifest.
+  # This runs after all Docker builds complete above, and it tells hub.docker.com
+  # that these builds should be all included in the manifest for this tag.
+  # (e.g. AMD64 and ARM64 should be listed as options under the same tagged Docker image)
+  docker-build_manifest:
+    if: ${{ github.event_name != 'pull_request' }}
+    runs-on: ubuntu-latest
+    needs: docker-build
+    steps:
+      - name: Download Docker build digests
+        uses: actions/download-artifact@v7.0.0
+        with:
+          path: /tmp/digests
+          # Download digests for both AMD64 and ARM64 into same directory
+          pattern: digests-${{ inputs.build_id }}-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3.12.0
+
+      - name: Add Docker metadata for image
+        id: meta
+        uses: docker/metadata-action@v5.10.0
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: ${{ env.IMAGE_TAGS }}
+          flavor: ${{ env.TAGS_FLAVOR }}
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3.6.0
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_ACCESS_TOKEN }}
+
+      - name: Create manifest list from digests and push
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+          $(printf '${{ env.IMAGE_NAME }}@sha256:%s ' *)
+
+      - name: Inspect image
+        run: |
+          docker buildx imagetools inspect ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
