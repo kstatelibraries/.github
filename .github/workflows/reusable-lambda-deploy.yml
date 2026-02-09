@@ -61,7 +61,7 @@ jobs:
           continue-on-error: true
 
         - name: Configure AWS Credentials
-          uses: aws-actions/configure-aws-credentials@v5.1.1
+          uses: aws-actions/configure-aws-credentials@v6.0.0
           if: ${{ inputs.lambda_role_name != '' }}
           with:
             role-to-assume: ${{ secrets[inputs.lambda_role_name] }}
