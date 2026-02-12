@@ -54,16 +54,24 @@ env:
   # For a new commit on other branches, use the branch name as the tag for Docker image.
   # For a new tag, copy that tag name as the tag for Docker image.
   IMAGE_TAGS: |
-    type=raw,value=latest,enable=${{ github.ref_name == github.event.repository.default_branch }}
-    type=ref,event=branch,enable=${{ github.ref_name != github.event.repository.default_branch }}
+    # Latest tag for default branch
+    type=raw,value=latest,enable=${{ endsWith(github.ref, github.event.repository.default_branch) }}
+    type=ref,event=branch,enable=${{ !endsWith(github.ref, github.event.repository.default_branch) }}
+
+    # Git tag push
     type=ref,event=tag
+
+    # PR builds
     type=raw,value=pr-${{ github.event.pull_request.number }},enable=${{ github.event_name == 'pull_request' }}
+
+    # Tag from workflow_run override
+    type=raw,value=${{ inputs.tags_flavor }},enable=${{ inputs.tags_flavor != '' }}
+    type=semver,pattern=v{{version}}
+    type=semver,pattern=v{{major}}.{{minor}}
+
   # Define default tag "flavor" for docker/metadata-action per
   # https://github.com/docker/metadata-action#flavor-input
-  # We manage the 'latest' tag ourselves to the 'main' branch (see settings above)
-  TAGS_FLAVOR: |
-    latest=false
-    ${{ inputs.tags_flavor }}
+  TAGS_FLAVOR: ${{ inputs.tags_flavor || 'latest=false' }}
 
 jobs:
   docker-build:
