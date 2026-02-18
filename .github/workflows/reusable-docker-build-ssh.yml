@@ -55,6 +55,7 @@ env:
     type=raw,value=latest,enable=${{ github.ref_name == github.event.repository.default_branch }}
     type=ref,event=branch,enable=${{ github.ref_name != github.event.repository.default_branch }}
     type=ref,event=tag
+    type=raw,value=pr-${{ github.event.pull_request.number }},enable=${{ github.event_name == 'pull_request' }}
   # Define default tag "flavor" for docker/metadata-action per
   # https://github.com/docker/metadata-action#flavor-input
   # We manage the 'latest' tag ourselves to the 'main' branch (see settings above)
@@ -64,7 +65,6 @@ env:
 
 jobs:
   docker-build:
-
     strategy:
       matrix:
         # Architectures / Platforms for which we will build Docker images
@@ -110,8 +110,8 @@ jobs:
 
       # https://github.com/docker/login-action
       - name: Login to DockerHub
-        # Only login if not a PR, as PRs only trigger a Docker build and not a push
-        if: ${{ ! matrix.isPr }}
+        # Only login if not from a fork
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
         uses: docker/login-action@v3.7.0
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
@@ -137,9 +137,8 @@ jobs:
           context: ${{ inputs.dockerfile_context }}
           file: ${{ inputs.dockerfile_path }}
           platforms: ${{ matrix.arch }}
-          # For pull requests, we run the Docker build (to ensure no PR changes break the build),
-          # but we ONLY do an image push to DockerHub if it's NOT a PR
-          push: ${{ ! matrix.isPr }}
+          # push if NOT a PR OR if it’s a same-repo PR
+          push: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
           # Use tags / labels provided by 'docker/metadata-action' above
           tags: ${{ steps.meta_build.outputs.tags }}
           labels: ${{ steps.meta_build.outputs.labels }}
@@ -148,15 +147,15 @@ jobs:
 
       # Export the digest of Docker build locally (for non PRs only)
       - name: Export Docker build digest
-        if: ${{ ! matrix.isPr }}
+        if: ${{ !matrix.isPr }}
         run: |
-            mkdir -p /tmp/digests
-            digest="${{ steps.docker_build.outputs.digest }}"
-            touch "/tmp/digests/${digest#sha256:}"
+          mkdir -p /tmp/digests
+          digest="${{ steps.docker_build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
 
       # Upload digest to an artifact, so that it can be used in manifest below
       - name: Upload Docker build digest to artifact
-        if: ${{ ! matrix.isPr }}
+        if: ${{ !matrix.isPr }}
         uses: actions/upload-artifact@v6.0.0
         with:
           name: digests-${{ inputs.build_id }}-${{ env.ARCH_NAME }}
@@ -171,8 +170,7 @@ jobs:
   docker-build_manifest:
     if: ${{ github.event_name != 'pull_request' }}
     runs-on: ubuntu-latest
-    needs:
-      - docker-build
+    needs: docker-build
     steps:
       - name: Download Docker build digests
         uses: actions/download-artifact@v7.0.0
@@ -208,4 +206,3 @@ jobs:
       - name: Inspect image
         run: |
           docker buildx imagetools inspect ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
-
