@@ -173,7 +173,7 @@ jobs:
     needs: docker-build
     steps:
       - name: Download Docker build digests
-        uses: actions/download-artifact@v7.0.0
+        uses: actions/download-artifact@v8.0.0
         with:
           path: /tmp/digests
           # Download digests for both AMD64 and ARM64 into same directory
