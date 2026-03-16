@@ -92,7 +92,7 @@ jobs:
 
       # https://github.com/webfactory/ssh-agent
       - name: Setup SSH Agent
-        uses: webfactory/ssh-agent@v0.9.1
+        uses: webfactory/ssh-agent@v0.10.0
         with:
             ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
